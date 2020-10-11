@@ -1,0 +1,85 @@
+---
+title: "Data Prep: AUSTRALIA cars"
+---
+
+## OPTION 1 ##
+# AUSTRALIA CAR REGISTRATIONS (From gov.) + ELECTRIC CAR SALES (From Electric Vehicle Council)
+Read the "AUbefore2015" excel file and separate the column out.
+```{r}
+library(readxl)
+library(tidyverse)
+
+columns <- c("Year","LeadedPetrol","UnleadedPetrol","TotalPetrol","Diesel",
+             "Other(InclLPG+DualFuel+Electric)","Total")
+AUbefore2015 <- read_excel("AUbefore2015.xlsx",sheet="Data")
+AUbefore2015 %>% extract(col=1,
+                         into=columns, regex="(20[0-9]{2})(\\s[0-9\\s]{0,3}[0-9]{3}\\s[0-9]{3})(\\s[0-9\\s]{0,3}[0-9]{3}\\s[0-9]{3})(\\s[0-9\\s]{0,3}[0-9]{3}\\s[0-9]{3})(\\s[0-9\\s]{0,3}[0-9]{3}\\s[0-9]{3})(\\s[0-9\\s]{0,3}[0-9]{3}\\s[0-9]{3})(\\s[0-9\\s]{0,3}[0-9]{3}\\s[0-9]{3})") %>% 
+  mutate_each(funs(if(is.character(.)) gsub(" ","",.) else .)) %>% 
+  mutate_each(funs(if(!grepl("20[0-9]{2}",.)) as.numeric(.) else .)) -> AUbaseFuels_untidy
+AUbaseFuels_untidy
+
+```
+
+
+From each Excel file for 2015 and after, extract the data in the tab "Table_5" on line 43. Make to sure to run the earlier code block BEFORE running this each time.
+```{r}
+# Read from table 5, line 43 and add the following column headers.
+lines2skip <- 42
+sheet_name <- "Table_5"
+
+file_names <- c("AU2015.xls","AU2016.xls","AU2017.xls","AU2018.xls","AU2019.xls","AU2020.xls")
+for(i in 1:length(file_names)) {
+  temp <- read_excel(file_names[i],sheet=sheet_name, col_names=columns, skip=lines2skip)
+  temp %>% head(1) -> temp
+  AUbaseFuels_untidy <- rbind(temp,AUbaseFuels_untidy)
+  rm(temp)
+}
+AUbaseFuels_untidy %>%
+  select(-c(LeadedPetrol,UnleadedPetrol)) %>% 
+  rename(Petrol=TotalPetrol) -> AUbaseFuels
+AUbaseFuels
+```
+
+Now add the data from the June 2018 "The state of electric vehicles in Australia" report. Note that this is SALES data rather than REGISTRATION data. But it's the best I could find.
+```{r}
+electric <- read_excel("AU_ElectricCarSales2018.xlsx",sheet="Data")
+electric %>% mutate(Year=as.character(Year)) -> electric
+electric
+AUbaseFuels %>%
+  left_join(electric, by=c("Year"="Year")) %>% 
+  mutate(Other=`Other(InclLPG+DualFuel+Electric)`-ifelse(is.na(Electric),0,Electric),
+         Hybrid=NA,
+         "LPG/NaturalGas"=NA,
+         Region="Australia") %>% 
+  select(Region, Year, Petrol, Diesel, Hybrid, Electric, `LPG/NaturalGas`, Other) -> AUcars1
+AUcars1
+```
+
+
+
+
+## OPTION 2 ##
+# FROM NTC (National Transport Commission)
+```{r}
+AUcars2_untidy <- read_excel("Australia_CO2_reports.xlsx",sheet="Data")
+AUcars2_untidy %>%
+  mutate(Region="Australia",
+         "LPG/NaturalGas"=LPG,
+         Other=NA,
+         Hybrid=NA,
+         Year=as.character(Year),
+         Electric=`Electric (Incl Tesla)`) %>% 
+  select(Region, Year, Petrol, Diesel, Hybrid, Electric, `LPG/NaturalGas`, Other) -> AUcars2
+AUcars2
+```
+
+
+
+
+# EXPORT (Remember to select which dataframe you want)
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(AUcars2, "AUSTRALIACarCountByFuel.xlsx")
+```
+

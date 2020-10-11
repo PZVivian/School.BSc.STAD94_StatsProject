@@ -1,0 +1,129 @@
+---
+title: "Data Prep: NORWAY-NETHERLANDS Cars"
+---
+## THIS IS OUTDATED AND WILL NOT WORK WITH THE NEW EXCEL FILE
+
+```{r}
+# Read in data from the excel file
+library(tidyverse)
+library(readxl)
+xlfile <- "EUROPEFuelType-CarCount.xlsx"
+CarCount2019_untidy <- read_excel(xlfile, sheet="Count_2019Report")
+CarCount2018_untidy <- read_excel(xlfile, sheet="Count_2018Report")
+CarCount2017_untidy <- read_excel(xlfile, sheet="Count_2017Report")
+FuelType2019 <- read_excel(xlfile, sheet="Fuels_2019Report_Raw")
+FuelType2018.1_untidy <- read_excel(xlfile, sheet="Fuels1_2018Report")
+FuelType2018.2_untidy <- read_excel(xlfile, sheet="Fuels2_2018Report")
+FuelType2018.3_untidy <- read_excel(xlfile, sheet="Fuels3_2018Report")
+FuelType2017.1_untidy <- read_excel(xlfile, sheet="Fuels1_2017Report")
+FuelType2017.2_untidy <- read_excel(xlfile, sheet="Fuels2_2017Report")
+```
+
+This contains data on:
+
+* "ACEA Report Vehicles in use Europe 2019"
+* "ACEA Report Vehicles in use Europe 2018"
+* "ACEA Report Vehicles in use Europe 2017"
+
+
+```{r}
+# View of 2019 car count data (untidied)
+CarCount2019_untidy
+# Cleaning the 2019 car count data
+CarCount2019_untidy %>%
+  extract(Data, c("Junk1", "Netherlands", "Junk2", "Norway", "Junk3"), 
+          "(.*[Nethrlands]{11})([0-9,.-]+)(.*[Norway]{6})([0-9,.-]+)(.*)") %>%
+  select(`Report Year`,`Vehicle Type`,`Netherlands`,`Norway`) %>% 
+  pivot_longer(cols=c("Netherlands", "Norway"),names_to="Region",values_to="Counts") %>% 
+  extract(Counts,c(2014:2018,"Junk"),
+          "([0-9]{0,3}[,]?[0-9]{0,3},[0-9]{0,3})([0-9]{0,3}[,]?[0-9]{0,3},[0-9]{0,3})([0-9]{0,3}[,]?[0-9]{0,3},[0-9]{0,3})([0-9]{0,3}[,]?[0-9]{0,3},[0-9]{0,3})([0-9]{0,3}[,]?[0-9]{0,3},[0-9]{0,3})(.*)") %>% 
+  select(-`Junk`) %>% 
+  pivot_longer(cols=c("2014","2015","2016","2017","2018"),names_to="Year",values_to="Count1") %>%
+  mutate(Count=as.numeric(gsub(",", "", `Count1`))) %>% 
+  select(`Report Year`, `Region`, `Vehicle Type`, `Year`, `Count`) %>% 
+  arrange(`Region`, `Vehicle Type`, desc(`Year`)) -> CarCount2019
+CarCount2019
+```
+
+A display of the untidied and tidied 2019 car count data.
+
+
+```{r}
+# The 2018 and 2017 car count data is about the same.
+clean_it <- function(x) {
+  x %>%
+    select(-contains("%")) %>% 
+    pivot_longer(cols=contains("0"),names_to="Year",values_to="Count1") %>% 
+    filter((Region=="Norway") | (Region=="Netherlands")) %>% 
+    select(`Report Year`, `Region`, `Vehicle Type`, `Year`, `Count1`) %>% 
+    arrange(`Region`, `Vehicle Type`, desc(`Year`)) %>% 
+    mutate(Count=as.numeric(`Count1`)) %>% 
+    select(-`Count1`) -> x_clean
+  x_clean
+}
+(CarCount2018 <- clean_it(CarCount2018_untidy))
+(CarCount2017 <- clean_it(CarCount2017_untidy))
+```
+
+A display of the tidied 2018 and 2017 car count data.
+
+
+```{r}
+# Merge the years from each report together where the latest report has the highest priority.
+CarCount2019 %>% 
+  rbind(CarCount2018, CarCount2017) %>% 
+  unite(id,Region,`Vehicle Type`,Year,sep="_") %>%
+  filter(!duplicated(id)) %>% # Keep data from latest report
+  filter(!grepl("Netherlands_Total commercial vehicles \\(incl buses\\)",id)) %>% # Removed bc repeated data
+  filter(!grepl(".*\\(incl buses\\)_201[2-5]",id)) %>% # Removed bc repeated data
+  separate(id,into=c("Region","Vehicle Type","Year"),sep="_") %>% 
+  arrange(`Region`, `Vehicle Type`, desc(`Year`)) -> CarCountALL
+CarCountALL %>% unite(id,Region,`Vehicle Type`,Year,sep="_") -> CarCountALL_id
+CarCountALL_id
+```
+
+In this dataset, the car count data from each report was merged. The latest records were kept for each year and repeated data was removed.
+
+
+```{r}
+# The fuel data is about the same for the 2018 and 2017 reports.
+clean_it2 <- function(x) {
+  x %>% 
+    select(-Metric) %>% 
+    filter((Region=="Norway") | (Region=="Netherlands")) %>%
+    pivot_longer(Petrol:Other,names_to="Fuel Type",values_to="% Share") %>% 
+    select(`Report Year`,`Region`,`Vehicle Type`, `Fuel Type`, `Year`, `% Share`) -> x_clean
+  x_clean
+}
+FuelType2018.1 <- clean_it2(FuelType2018.1_untidy)
+FuelType2018.2 <- clean_it2(FuelType2018.2_untidy)
+FuelType2018.3 <- clean_it2(FuelType2018.3_untidy)
+FuelType2017.1 <- clean_it2(FuelType2017.1_untidy)
+FuelType2017.2 <- clean_it2(FuelType2017.2_untidy)
+FuelTypeALL <- rbind(FuelType2018.1,FuelType2018.2,FuelType2018.3,FuelType2017.1,FuelType2017.2)
+FuelTypeALL %>% unite(id,Region,`Vehicle Type`,Year,sep="_") -> FuelTypeALL_id
+FuelTypeALL_id
+```
+
+In this dataset, the fuel data from the 2017 and 2018 report was merged.
+
+
+```{r}
+# Create a dataset containing the car count based on fuel type
+FuelTypeALL_id %>%
+  left_join(CarCountALL_id, by=c("id"="id")) %>% 
+  mutate("Num Vehicles for Fuel Type"=`% Share`*`Count`) %>% 
+  mutate("% Share for Fuel Type"=`% Share`) %>% 
+  mutate("Total Vehicles (All Fuel Types)"=`Count`) %>% 
+  separate(id,into=c("Region","Vehicle Type","Year"),sep="_") %>%
+  select(`Region`,`Vehicle Type`, `Fuel Type`, `Year`, `% Share for Fuel Type`,
+         `Num Vehicles for Fuel Type`, `Total Vehicles (All Fuel Types)`) %>% 
+  arrange(`Region`,`Vehicle Type`, `Fuel Type`, `Year`) -> CarCountByFuel
+CarCountByFuel
+```
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(CarCountByFuel, "NORWAY-NETHERcars.xlsx")
+```

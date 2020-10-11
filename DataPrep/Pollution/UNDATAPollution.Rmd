@@ -1,0 +1,70 @@
+---
+title: "Data Pre: UN Data Pollution"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+
+CH4_untidy <- read_csv("UNdata_CH4.csv")
+CO2_untidy <- read_csv("UNdata_CO2.csv")
+GHG_untidy <- read_csv("UNdata_GHGs.csv")
+HFC_untidy <- read_csv("UNdata_HFCs.csv")
+N2O_untidy <- read_csv("UNdata_N2O.csv")
+NF3_untidy <- read_csv("UNdata_NF3.csv")
+PFC_untidy <- read_csv("UNdata_PFCs.csv")
+SF6_untidy <- read_csv("UNdata_SF6.csv")
+HFC.PFC_untidy <- read_csv("UNdata_UnspecifiedHFC&PFC.csv")
+
+CH4_untidy
+```
+A view of one of the files (messy). The formats are about the same. 
+
+
+```{r}
+fix_it <- function(df, pollutant) {
+  col_name <- paste(pollutant, " (kilotonne CO2 equivalent)")
+  df %>% 
+    rename_at(vars(starts_with("Value")), funs(str_replace(., "Value", col_name))) %>% 
+    unite("ID", "Country or Area", Year, sep="_") -> df
+  df
+}
+
+CH4 <- fix_it(CH4_untidy, "CH4")
+CO2 <- fix_it(CO2_untidy, "CO2")
+GHG <- fix_it(GHG_untidy, "GHG")
+HFC <- fix_it(HFC_untidy, "HFC")
+N2O <- fix_it(N2O_untidy, "N2O")
+NF3 <- fix_it(NF3_untidy, "NF3")
+PFC <- fix_it(PFC_untidy, "PFC")
+SF6 <- fix_it(SF6_untidy, "SF6")
+HFC.PFC <- fix_it(HFC.PFC_untidy, "Unspecified HFC/ PFC")
+
+CH4
+CO2
+```
+A view of one of some of the files (tidy). The formats are about the same. 
+
+
+```{r}
+All_Pollutants <- rbind(CH4[1],CO2[1],GHG[1],HFC[1],N2O[1],NF3[1],PFC[1],SF6[1],HFC.PFC[1])
+All_Pollutants %>%
+  distinct(ID) %>% 
+  left_join(CH4, by="ID") %>% 
+  left_join(CO2, by="ID") %>% 
+  left_join(GHG, by="ID") %>% 
+  left_join(HFC, by="ID") %>% 
+  left_join(N2O, by="ID") %>% 
+  left_join(NF3, by="ID") %>% 
+  left_join(PFC, by="ID") %>% 
+  left_join(SF6, by="ID") %>% 
+  left_join(HFC.PFC, by="ID") %>% 
+  separate(ID, into=c("Region","Year"), sep="_") -> All_Pollutants
+All_Pollutants
+```
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(All_Pollutants, "UNdata_All.xlsx")
+```

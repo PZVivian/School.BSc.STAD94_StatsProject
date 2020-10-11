@@ -1,0 +1,43 @@
+---
+title: "Data Prep: BRAZIL Cars"
+---
+
+Read in the data.
+```{r}
+library(tidyverse)
+library(readxl)
+BrazilCars_untidy <- read_excel("Brazil-LightVehicleRegis-2014-2019-by-fuel.xlsx", sheet="Data", skip=4)
+BrazilCars_untidy
+```
+
+
+Reorganize it so it matches the same format as the other countries.
+```{r}
+BrazilCars_untidy %>% 
+  mutate(Region="Brazil",
+         Year=`...1`,
+         Petrol=Gasoline,
+         Hybrid=`Flexible fuel*`,
+         Electric=`Electric**`,
+         "LPG/NaturalGas"=NA,
+         Other=Ethanol) %>% 
+  select(Region, Year, Petrol, Diesel, Hybrid, Electric, `LPG/NaturalGas`, Other) -> BrazilCars
+BrazilCars
+```
+ISSUE: The "Hybrid" section here actually contains vehicles that run on Petrol/Ethanol and is NOT consistent with my definition for hybrid electric vehicles. Hybrid electric vehicles are incorporated in the "Electric" category for Brazil.
+CONCLUSION: It might make more sense to add the Flexible Fuel cars to "Petrol" since they use Petrol/Ethanol (Ethanol is categorized as an "Other" fuel). The "Hybrid" category would then be empty (NULL).
+
+```{r}
+BrazilCars %>% 
+  mutate(Petrol=Petrol+Hybrid, Hybrid=NA) -> BrazilCars2
+BrazilCars2
+```
+
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(BrazilCars2, "BRAZILcars.xlsx")
+```
+
+

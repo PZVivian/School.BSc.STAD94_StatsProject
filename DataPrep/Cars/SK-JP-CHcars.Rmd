@@ -1,0 +1,104 @@
+---
+title: "Data Prep: SK,JP,CH Cars"
+---
+
+# SOUTH KOREA CARS
+```{r}
+library(tidyverse)
+library(readxl)
+SKcars_untidy <- read_excel("SK_2016-17.xlsx",sheet="Data")
+SKcars_untidy
+```
+
+
+```{r}
+SKcars_untidy %>% 
+  mutate(Petrol=as.numeric(`Gasoline_Number of inspections (large)`),
+         Diesel=as.numeric(`Diesel_Number of inspections (large)`),
+         LPG=as.numeric(`LPG_Number of inspections (large)`),
+         Electric=as.numeric(`Electric_Number of inspections (large)`),
+         Hybrid=as.numeric(`Hybrid_Number of inspections (large)`),
+         NaturalGas=as.numeric(`CNG_Number of inspections (large)`),
+         Other=as.numeric(`Other_Number of inspections (large)`)) %>% 
+  select(-contains("Non-conforming rate"),-contains("Number of inspections (large)"),-contains("All")) %>% 
+  filter(`Vehicle Type`=="All") %>% 
+  filter(Size=="All") %>% 
+  mutate(Region="Republic of Korea", `LPG/NaturalGas`=LPG+NaturalGas) %>% 
+  select(Region, Year, Petrol, Diesel, Hybrid, Electric, `LPG/NaturalGas`, Other) -> SKcars
+SKcars
+```
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(SKcars, "SKcars.xlsx")
+```
+
+
+
+# JAPAN CARS
+```{r}
+JPNextGen <- read_excel("JapanNextGenCars.xlsx", sheet="Data")
+JPDiesel <- read_excel("JapanDieselCars.xlsx", sheet="Data")
+JPOthers <- read_excel("JapanOtherCars.xlsx", sheet="Data")
+JPNextGen
+JPDiesel
+JPOthers
+```
+
+There is a trend graph which includes the % share of next generation cars. Compute the total number of cars from that percentage.
+```{r}
+JPCars_neartidy <- cbind(JPNextGen, JPOthers$PercentNextGenDecimal)
+```
+
+The next generation cars only include passenger cars, so we only need to keep the passenger cars that use diesel.
+```{r}
+JPCars_neartidy %>% 
+  mutate(Region="Japan",
+         Year=`...1`,
+         Petrol=NA,
+         Hybrid=`Hybrid vehicles`,
+         Electric=`Electric vehicles`+`Plug-in hybrid vehicles`+`Fuel cell vehicles`,
+         `LPG/NaturalGas`=NA,
+         Other1=Total/`JPOthers$PercentNextGenDecimal`) %>% 
+  left_join(JPDiesel,by=c("Year"="Year")) %>% 
+  mutate(Other=Other1-Total.x-Cars,
+         Diesel=Cars) %>% 
+  select(Region, Year, Petrol, Diesel, Hybrid, Electric, `LPG/NaturalGas`, Other) -> JPcars
+JPcars
+```
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(JPcars, "JPcars.xlsx")
+```
+
+
+# CHINA CARS
+```{r}
+CHcars_untidy <- read_excel("ChinaSales_CEIC+Statistia.xlsx", sheet="Data")
+CHcars_untidy
+```
+
+Reorganize so it matches the format of the other countries.
+```{r}
+CHcars_untidy %>% 
+  mutate(Region="China",
+         Hybrid=NA, # no hybrid car data
+         `LPG/NaturalGas`=NA, # no lpg/ natural gas data
+         Electric=`Battery electric vehicles`+`Plug-in hybrid electric vehicles`,
+         Diesel=`Diesel-CC`+`Diesel-PC`, # add data for commerical cars (CC) and passenger cars (PC) to get all cars 
+         Petrol=`Gasoline-CC`+`Gasoline-PC`, 
+         Other=`Other-CC`+`Other-PC`-Electric) %>% # subtract electric cars from here bc electric cars are included in other fuels
+  select(Region, Year, Petrol, Diesel, Hybrid, Electric, `LPG/NaturalGas`, Other) -> CHcars
+CHcars
+```
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(CHcars, "CHcars.xlsx")
+```
+
+

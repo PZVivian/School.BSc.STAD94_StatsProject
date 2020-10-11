@@ -1,0 +1,54 @@
+---
+title: "Data Prep: NORTH AMERICA Pollution"
+---
+
+```{r}
+library(tidyverse)
+(CanNO2_untidy <- read_csv("no2-average-regional-en.csv"))
+(CanO3_untidy <- read_csv("ozone-average-regional-en.csv"))
+(CanPM25_untidy <- read_csv("pm25-average-regional-en.csv"))
+(CanSO2_untidy <- read_csv("so2-average-regional-en.csv"))
+(CanVOC_untidy <- read_csv("voc-regional-en.csv"))
+```
+A display of the untidy data. It needs cleaning!
+
+
+```{r}
+# Function made specifically to clean the above files
+clean_it3 <- function(x,pollutant_name) {
+  headings <- as.character(x[2,]) # Save headings from row 2 into vector
+  unit <- substring(headings[2], regexpr("\\(", headings[2])+1, regexpr("\\)", headings[2])-1)
+  headings <- c("Year", "Atlantic Canada average concentration",
+                "Southern Quebec average concentration", "Southern Ontario average concentration",
+                "Prairies and northern Ontario average concentration",
+                "British Columbia average concentration")
+  names(x) <- headings # Change headings
+  x %>% 
+    filter(grepl("^[0-9]+$",Year)) %>% 
+    mutate(Pollutant=pollutant_name) %>% 
+    mutate(Units=unit) %>% 
+    select(Pollutant, Units, Year, headings[2], headings[3], headings[4], headings[5], headings[6]) %>% 
+    arrange(Year) -> x_clean
+  x_clean
+}
+CanNO2 <- clean_it3(CanNO2_untidy,"NO2")
+CanO3 <- clean_it3(CanO3_untidy,"O3")
+CanPM25 <- clean_it3(CanPM25_untidy,"PM25")
+CanSO2 <- clean_it3(CanSO2_untidy,"SO2")
+CanVOC <- clean_it3(CanVOC_untidy,"VOC")
+CanVOC
+```
+A display of one of the dataframes (VOC) since they all look around the same.
+
+
+```{r}
+CanPollutants <- rbind(CanNO2,CanO3,CanPM25,CanSO2,CanVOC)
+CanPollutants
+```
+
+A view of the combined data. Note:
+* parts per million = ppm
+* parts per billion = ppb
+* parts per billion carbon = ppbC
+* micrograms per cubic metre = µg/m3
+

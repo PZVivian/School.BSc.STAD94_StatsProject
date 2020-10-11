@@ -1,0 +1,98 @@
+---
+title: "Data Prep: NORTH AMERICA Cars"
+---
+
+# CANADA CARS
+```{r}
+library(tidyverse)
+CanadaFile <- "CanadaNewRegistrations.csv"
+CanadaCars_untidy <- read_csv(CanadaFile)
+CanadaCars_untidy %>% 
+  mutate(Year=REF_DATE, Region=GEO, Value=VALUE) %>% 
+  filter(`Vehicle type`=="Total, vehicle type") %>%
+  select(Region,`Fuel Type`,Year,Value) %>% 
+  filter(Region=="Canada") %>% 
+  filter(`Fuel Type`!="All fuel types") %>%
+  mutate(`Fuel Type` = str_replace(`Fuel Type`, "Other fuel types", "Other")) %>% 
+  mutate(`Fuel Type` = str_replace(`Fuel Type`, "Other fuel types", "Other")) %>% 
+  mutate(`Fuel Type` = str_replace(`Fuel Type`, "Gasoline", "Petrol")) %>% 
+  mutate(`Fuel Type` = str_replace(`Fuel Type`, "Hybrid electric", "Hybrid")) %>% 
+  pivot_wider(names_from="Fuel Type",values_from="Value") %>% 
+  mutate(Electric=`Battery electric`+`Plug-in hybrid electric`) %>%
+  mutate(`LPG/NaturalGas`=NA) %>% 
+  select(Region, Year, Petrol, Diesel, Hybrid, Electric, `LPG/NaturalGas`, Other) -> CanadaCars
+CanadaCars
+```
+
+A display of the number of all cars in canada by fuel type from the years 2011-2018.
+
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(CanadaCars, "CANADAcars.xlsx")
+```
+
+
+
+# UNITED STATES CARS
+Use the data from the EIA.
+```{r}
+# Function to read the "LightVehicleSales_Outlook20XX.csv" files and sort them.
+read_outlook <- function(year) {
+  df <- read_csv(paste0("LightVehiclesSales_Outlook",year,".csv"),skip=4)
+  df %>%
+    tail(2) %>% 
+    mutate(Diesel=round((as.numeric(`Conventional Cars: TDI Diesel thousands`)+
+                     as.numeric(`Conventional Light Trucks: TDI Diesel thousands`))*1000,digits=0),
+           Petrol=round((as.numeric(`Conventional Cars: Gasoline thousands`)+
+                     as.numeric(`Conventional Light Trucks: Gasoline thousands`))*1000,digits=0), 
+           "LPG/NaturalGas"=NA,
+           Other=NA) %>% 
+    select(Year,Diesel,Petrol,`LPG/NaturalGas`,Other) -> df
+  df
+}
+
+# Read all the "LightVehiclesSales_Outlook20XX.csv" files
+for(year in 2014:2020) {
+  temp <- read_outlook(year)
+  if(year==2014){
+    GasAndDiesel <- temp
+  } else {
+    GasAndDiesel <- rbind(GasAndDiesel, temp)
+  }
+}
+# A view of GasAndDiesel before cleaning it
+GasAndDiesel
+
+# Remove duplicate years by keeping the latest entry. 
+# Why keep the latest entry? 2 rows were extracted from each file with the bottom row as a potentially REAL value and the top row as a potentially projected value. We want to keep the REAL values for sure. So, if there are repeats, this means the first entry was a projection and the second was a REAL value. Real values do not repeat.
+GasAndDiesel <- GasAndDiesel[!rev(duplicated(rev(GasAndDiesel$Year))),]
+GasAndDiesel %>% arrange(Year) -> GasAndDiesel
+GasAndDiesel
+```
+
+
+Now we combine the results above with the data from the Auto Alliance Driving Innovation.
+```{r}
+library(tidyverse)
+library(readxl)
+OtherFuels <- read_excel("AADI_AdvancedTechVehicleSalesDash.xlsx",sheet="Data")
+OtherFuels
+OtherFuels %>%
+  filter(Year!=2019) %>% # remove 2019 data because it is not complete
+  mutate(Electric=FCEV+BEV+PHEV, Hybrid=HEV) %>% 
+  select(Year, Hybrid, Electric) %>% 
+  left_join(GasAndDiesel,by=c("Year"="Year")) %>% 
+  mutate(Region="United States of America") %>% 
+  select(Region, Year, Petrol, Diesel, Hybrid, Electric, `LPG/NaturalGas`,Other) -> UScars
+UScars
+```
+
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(UScars, "UScars.xlsx")
+```
+

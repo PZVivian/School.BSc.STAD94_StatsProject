@@ -1,0 +1,70 @@
+---
+title: "Data Prep: Health"
+---
+
+```{r}
+library(tidyverse)
+DALYs_untidy <- read_csv("DALYs-AmbPollution-Country_TextVals.csv")
+Deaths_untidy <- read_csv("Deaths-AmbPollution-Country_TextVals.csv")
+YLLs_untidy <- read_csv("YLLs-AmbPollution-Country_TextVals.csv")
+DALYs_untidy
+Deaths_untidy
+YLLs_untidy
+```
+
+```{r}
+# Check to see all rows in the PUBLISH STATES column is "Published". If so, we can remove this column.
+DALYs_untidy %>% count(`PUBLISH STATES`=="Published")
+Deaths_untidy %>% count(`PUBLISH STATES`=="Published")
+YLLs_untidy %>% count(`PUBLISH STATES`=="Published")
+# Check if there is only one indicator value in each of the files. If so, we can easily change the headers.
+DALYs_untidy %>% count(`Indicator`=="Ambient air pollution attributable DALYs")
+Deaths_untidy %>% count(`Indicator`=="Ambient air pollution attributable deaths")
+YLLs_untidy %>% count(`Indicator`=="Ambient air pollution attributable YLLs")
+```
+All the rows are "Published" in the PUBLISH STATES column. Thus, we can remove it bc it's not important. There could be more than one value for the Indicator column. 
+
+
+```{r}
+#' Function to format each of the WHO files
+#' @param
+#' df - dataframe; indicator - DALYs, deaths, or YLLs
+#'
+#' @description
+#' Does the following:
+#' * Removes the columns "Indicator","PUBLISH STATES", "Comments", "Display Value", "Low", "High"
+#' * Removes data on cataracts (bc the excel file has all 0s and nulls for that)
+#' * Moves causes from rows to columns
+#' * Keeps data of the indicator for the general population (i.e. excludes specific ones like children under 5)
+fix_it <- function(df,indicator, pop) {
+  df %>% 
+    filter(Indicator==paste("Ambient air pollution attributable",indicator,sep=" ")) %>% 
+    filter(Cause!="Cataracts") %>% 
+    mutate(Cause=paste(Cause,indicator,sep="_")) %>% 
+    select(-c(Indicator,`WHO region`,`PUBLISH STATES`, Comments, `Display Value`, Low, High)) %>% 
+    pivot_wider(names_from=Cause,values_from=Numeric) %>% 
+    unite("id1",c(Country,Year),sep="_") %>% 
+    unite("id",c(id1,Sex),sep="#") %>% 
+    arrange(id) ->
+    df
+  return(df)
+}
+DALYs <- fix_it(DALYs_untidy,"DALYs  (per 100 000 population)"); DALYs # we used only "DALYs" previously
+Deaths <- fix_it(Deaths_untidy,"death rate (per 100 000 population)"); Deaths # we used only "deaths" previously
+#YLLs <- fix_it(YLLs_untidy,"YLLs (per 100 000 population)"); YLLs #There's no data for "YLLs (per 100 000 population)"
+DALYs %>% 
+  full_join(Deaths, by=c("id"="id")) %>% 
+  #full_join(YLLs, by=c("id"="id")) %>%
+  separate(id,into=c("id","Sex"),sep="#") %>% 
+  arrange(id) -> healthData
+healthData
+```
+There's a lot of info in the original file including DALYs per 100,000 population, DALYs per 100,000 population & age standardized, and in children under 5 years. If you want to analyze that, you'll have to add that back in since I removed it for simplicity.
+
+The cleaned file has data on the sex breakdown. This might be interesting and more simple to look at, so I kept it. Filtering may be required when analyzing the data. For now, we shall process it in a file for later.
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(healthData, "health.xlsx")
+```
+

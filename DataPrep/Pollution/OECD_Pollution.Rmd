@@ -1,0 +1,55 @@
+---
+title: "Data Prep: OECD Pollution"
+---
+
+```{r}
+library(tidyverse)
+pollutants_untidy <- read_csv("AirandGHGemissions.csv")
+pollutants_untidy
+
+# Check if we can remove the columns Indicator, Frequency, Flag Codes. There are 27120 rows in the original dataframe. So if all these have the same values, then we can remove the columns.
+pollutants_untidy %>% count(INDICATOR=="AIREMISSION")
+pollutants_untidy %>% count(FREQUENCY=="A")
+pollutants_untidy %>% count(is.na(`Flag Codes`))
+```
+We can remove the 3 columns tested.
+
+
+We will need to convert the 3 letter country codes into country names. So we need a file to convert it. 
+```{r}
+library(readxl)
+codes <- read_excel("CountryCodes.xlsx",sheet="Data")
+codes %>%
+  separate(Country, c("Country","Junk"),sep="\\s\\(",remove=T) %>% 
+  select(`Alpha-3 code`,Country) -> codes
+codes$Country[codes$`Alpha-3 code` == "KOR"] <- "Republic of Korea"
+codes
+```
+
+
+Based on the dashboard on the website (https://data.oecd.org/air/air-and-ghg-emissions.htm), we will use measure which offers the most data in terms of countries. These will be measures we'll use:
+* CO2: Tonnes/capita
+* CO: Kilograms/capita
+* GHG: Tonnes/capita
+* NOX: Kilograms/capita
+* SOX: Kilograms/capita
+* VOC: Kilograms/capita
+Thus, we will filter only for "TONNE_CAP" and "KG_CAP".
+```{r}
+pollutants_untidy %>% 
+  select(-c(INDICATOR,FREQUENCY,`Flag Codes`)) %>% 
+  filter(MEASURE=="TONNE_CAP"|MEASURE=="KG_CAP") %>% 
+  left_join(codes,by=c("LOCATION"="Alpha-3 code")) %>%
+  mutate(id=paste(Country,TIME,sep="_"),Pollutant=SUBJECT,Measure=MEASURE,) %>% 
+  select(id, Pollutant, Measure, Value) -> pollutants
+pollutants
+```
+
+
+```{r}
+# Export to excel file so it can be easily processed after
+library(xlsx)
+write.xlsx(pollutants, "pollutants.xlsx")
+```
+
+

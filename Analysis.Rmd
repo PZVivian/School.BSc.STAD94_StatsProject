@@ -1,0 +1,577 @@
+---
+title: "Analysis (Old copy of the report file)"
+author: "Pao Zhu Vivian Hsu"
+output:
+  pdf_document:
+    fig_caption: yes
+    extra_dependencies: "subfig"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=F,fig.height=4,fig.weight=6)
+```
+
+\newpage
+
+TODO: Acknowledgement
+
+\newpage
+
+\tableofcontents
+\newpage
+
+# Abstract
+\newpage
+
+# Introduction
+As the human population increases, the car population increases. This poses a problem for the environment and health due to pollution.
+Recently, electric vehicles are increasingly becoming more common.
+
+# Methods
+TODO: Talk about gathering the data
+
+# Analysis
+
+TODO: Write an intro before throwing code at the reader. Address the following research questions:
+  - How do the pollution levels change within each region of interest as the percentage of electric vehicles increase? (i.e. relationship)
+  - What kind of relationship is it? I would expect it to be a downward trend.
+  - Can we model the relationship to do predictions?
+
+```{r, include=F}
+library(tidyverse)
+library(readxl)
+library(broom)
+library(ggrepel)
+
+# Read the (cleaned) data and compute the % of electric vehicles.
+ALLdata_raw <- read_excel("DataPrep/ALLdata.xlsx")
+ALLdata_raw %>% 
+  mutate("%Electric"=100*Electric/sum(ifelse(is.na(Petrol),0,Petrol),
+                                      ifelse(is.na(Diesel),0,Diesel),
+                                      ifelse(is.na(Hybrid),0,Hybrid),
+                                      ifelse(is.na(Electric),0,Electric),
+                                      ifelse(is.na(`LPG+NaturalGas`),0,`LPG+NaturalGas`),
+                                      ifelse(is.na(Other),0,Other)),
+         "%Hybrid"=100*Hybrid/sum(ifelse(is.na(Petrol),0,Petrol),
+                                  ifelse(is.na(Diesel),0,Diesel),
+                                  ifelse(is.na(Hybrid),0,Hybrid),
+                                  ifelse(is.na(Electric),0,Electric),
+                                  ifelse(is.na(`LPG+NaturalGas`),0,`LPG+NaturalGas`),
+                                  ifelse(is.na(Other),0,Other))) %>% 
+  select(Country:Other,`%Electric`,`%Hybrid`,VehicleType:Value) ->
+  ALLdata
+```
+
+
+
+## Impact of Electric Vehicles on Pollution
+### Data Visualization
+TODO: Need to write an intro here!
+
+```{r, include=F}
+# Dataframe to analyze association between % share of electric vehicles and pollution. 
+ALLdata %>%
+  select(-c(Sex:Total_YLLs)) %>%
+  unique() %>% 
+  filter(!is.na(Pollutant)) %>% 
+  filter(!is.na(Value)) ->
+  electricPoll
+```
+
+
+```{r,fig.cap="\\label{fig:figs}Pollutants against % share of electric vehicles"}
+# Scatter plots of % share of electric vehicles against value of pollutant
+ggplot(electricPoll,aes(x=`%Electric`,y=Value)) +
+  geom_point() +
+  facet_wrap(~Pollutant, scales="free") +
+  labs(x="% Share of Electric Vehicles")
+```
+
+At first glance, the data points do not appear to follow any particular trend. However, after careful observation, several linear patterns can be seen within each plot. This may have been caused by another variable, specifically `Country`, since pollution levels and the % share of electric vehicles are largely affected by factors within a country (ex. pollution laws, government subsidies for electric vehicles, societal values, etc).
+
+To check if my speculation is true, I will plot the points again and colour them by WHO Region. I have decided not to colour them by country, but by WHO region instead, since there are 34 countries and 34 colours would be difficult to read. Note - The following shows which countries from the dataset belong to which WHO regions:
+
+* "Americas" Region: Canada, US, Brazil
+* "Western Pacific" Region: China, South Korea, Japan, Australia
+* "Europe" Region: the remaining 27 countries
+
+```{r,fig.cap="\\label{fig:figs}Pollutants against % share of electric vehicles by WHO Region"}
+# Scatter plots of % electric vehicles against value of pollutant with WHO regions labelled
+ggplot(electricPoll,aes(x=`%Electric`,y=Value,colour=`WHO Region`)) +
+  geom_point() +
+  facet_wrap(~Pollutant, scales="free") +
+  labs(x="% Share of Electric Vehicles") +
+  scale_fill_continuous(guide = guide_legend()) +
+  theme(legend.position="bottom")
+```
+
+As speculated, the initial plots did not show any trends because the points vary greatly from country to country (and therefore by WHO region).
+
+For the Americas, there is a generally weak, linear relationship between each of the air pollutants and the % share of electric vehicles. For the CO$_2$ plot, there appears to be a cluster of outliers near the bottom, left corner of the plot. Since the Americas consists of two higher income countries (Canada, US) and a lower income country (Brazil), I would expect the outliers to be from Brazil since Brazil differs from Canada and the US by income level. The following CO$_2$ plot of the Americas coloured by country confirms this.
+
+```{r,fig.height=2,fig.width=4,fig.cap="\\label{fig:figs}CO2 against % share of electric vehicles for Americas by country"}
+electricPoll %>% 
+  select(-Measure) %>% 
+  pivot_wider(names_from = Pollutant,values_from = Value) %>%
+  filter(`WHO Region`=="Americas") ->
+  electricPoll_A
+
+# Scatter plot of the Americas to check what country the outliers are from
+ggplot(electricPoll_A,aes(x=`%Electric`,y=CO2,colour=Country)) +
+  geom_point() +
+  labs(x="% Share of Electric Vehicles")
+```
+
+For the Western Pacific, there appears to be a less pronounced, almost non-existent, linear relationship between the pollutants and the % share of electric vehicles. Like the Americas, there also appears to be a cluster of outliers in each of the plots. Since the Western Pacific consists of 3 East Asian countries (China, Japan, South Korea) and Australia, I would expect the outliers to come from Australia since Australia differs drastically from the other 3 countries in terms of culture, population density, etc. The following plot of the Western Pacific coloured by country confirms this. Note that there aren't many data points for South Korea and that the points do differ from China and Japan for some of the pollutants. If we want to build models using the China, Japan, and South Korea, it may be optimal to remove South Korea since it acts as outliers. For CO$_2$, China and Japan show a very different trend. China appears to have a linear relationship with CO$_2$ and the % of electric cars while Japan shows a cluster of data points very close to 0. It is critical to keep this in mind when performing analysis.
+
+```{r,fig.cap="\\label{fig:figs}Pollutants against % share of electric vehicles in Western Pacific"}
+electricPoll %>% filter(`WHO Region`=="Western Pacific") -> electricPoll_WP
+
+# Scatter plot of the Western Pacific to check what country the outliers are from
+ggplot(electricPoll_WP,aes(x=`%Electric`,y=Value,colour=`Country`)) +
+  geom_point() +
+  facet_wrap(~Pollutant, scales="free") +
+  labs(x="% Share of Electric Vehicles") +
+  scale_fill_continuous(guide = guide_legend()) +
+  theme(legend.position="bottom")
+```
+
+Lastly, for Europe, we also observe a generally weak, linear relationship between the air pollutants and the % share of electric vehicles. However, there appears to be a lot countries with a really low percentage of electric vehicles (almost 0) as indicated by the abundance of points located near 0. Perhaps it could be useful to remove the countries which remain near 0 since the objective of our study to see if the effect of electric cars. To do this, we can break Europe down into sub-regions and identify which regions or specific countries have this characteristic.
+
+Overall, this means it may be better to classify the countries based on our own regions since the WHO regions are producing outliers and too much variability for Europe. We define 6 regions as:
+
+* North America: Canada, United States
+* East Asia: China, Japan
+* Europe
+  + Northern Europe: Denmark, Estonia, Finland, Ireland, Latvia, Lithuania, Norway, Sweden, United Kingdom
+  + Southern Europe: Croatia, Greece, Italy, Portugal, Slovenia, Spain
+  + Eastern Europe: Czechia, Hungary, Poland, Romania, Slovakia
+  + Western Europe: Austria, Belgium, Germany, Luxembourg, Netherlands, Switzerland
+
+Note that Australia, Brazil, and South Korea have been removed in the new categories for two reasons. Firstly, they act as outliers when placed with other countries. Secondly, these countries only have 1-3 years of data with very low spread. Thus, grouping them with countries that have many years of data and larger spread would result in inaccurate analyses.
+
+Now we plot the data points again using the new categories. We start by plotting North America.
+
+```{r,include=F}
+# Datasets for the new regions by category (North America, East Asia, Europe)
+electricPoll %>% filter(Country=="Canada" | Country=="United States of America") -> electricPoll_America
+electricPoll %>% filter(Country=="China" | Country=="Japan") -> electricPoll_Asia
+electricPoll %>% filter(`WHO Region`=="Europe") -> electricPoll_Europe
+electricPoll %>% filter(`Region`=="Northern Europe") -> electricPoll_EuropeN
+electricPoll %>% filter(`Region`=="Western Europe") -> electricPoll_EuropeW
+```
+
+```{r,fig.cap="\\label{fig:figs}Pollutant levels against % share of electric vehicles in North America"}
+# Scatter plot for North America
+ggplot(electricPoll_America,aes(x=`%Electric`,y=Value,colour=Country)) +
+  geom_point() +
+  geom_smooth(method="lm",se=F) +
+  facet_wrap(~Pollutant, scales="free") +
+  labs(x="% Share of Electric Vehicles") +
+  scale_fill_continuous(guide = guide_legend()) +
+  theme(legend.position="bottom")
+```
+
+For North America, there appears to be two different trends despite the similarities between Canada and the United States. For all of the pollutants, the % of electric vehicles appear to have a greater impact on pollutant levels in Canada compared to the United States (i.e. Canada has a greater slope compared to the United States).
+
+
+```{r,fig.cap="\\label{fig:figs}Pollutant levels against % share of electric vehicles in East Asia"}
+# Scatter plot for East Asia
+ggplot(electricPoll_Asia,aes(x=`%Electric`,y=Value, colour=Country)) +
+  geom_point() +
+  geom_smooth(method="lm",se=F) +
+  facet_wrap(~Pollutant, scales="free") +
+  labs(x="% Share of Electric Vehicles") +
+  scale_fill_continuous(guide = guide_legend()) +
+  theme(legend.position="bottom")
+```
+
+For China, a clear trend can only be seen for CO$_2$ since there is not enough data for the other pollutants. The trend appears linear with a weak, positive slope. Since the slope is near 0, this may suggest that an increase in the % share of electric vehicles is not producing a significant impact on CO$_2$ levels. For Japan, there appears to be a linear trend for all of the pollutants. The data points for CO$_2$ are clustered near 0 and may appear to not have any significant trend. However, this could be due to the fact that China has a different scale than Japan. So, it could still be appropriate to create a model for CO$_2$. Unexpectedly, CO$_2$ and GHG seem to have an upward linear trend.
+
+
+```{r,fig.cap="\\label{fig:figs}Pollutant levels against % share of electric vehicles in Europe"}
+# Scatter plot for Europe
+ggplot(electricPoll_Europe,aes(x=`%Electric`,y=Value,colour=Region)) +
+  geom_point() +
+  geom_smooth(method="lm",se=F) +
+  facet_wrap(~Pollutant, scales="free") +
+  labs(x="% Share of Electric Vehicles") +
+  scale_fill_continuous(guide = guide_legend()) +
+  theme(legend.position="bottom")
+```
+
+For Europe, many of the data points for Southern and Eastern Europe are near 0, indicating that there is ~0% share of electric vehicles in these regions. Northern and Western Europe have greater percentages of electric vehicles but there is a fair bit of variation in the points. This suggests that it may be more reasonable to build models only for Northern and Western Europe, after outliers are removed. Below we create a plot to help identify the outliers.
+
+```{r,figures-side,fig.show="hold",out.width="50%"}
+ggplot(electricPoll_EuropeN,aes(x=`%Electric`,y=Value,colour=Country)) +
+  geom_point() +
+  facet_wrap(~Pollutant, scales="free") +
+  ggtitle("Pollutant levels against % share of electric vehicles in Europe") +
+  labs(x="% Share of Electric Vehicles") +
+  scale_fill_continuous(guide = guide_legend()) +
+  theme(legend.position="bottom")
+
+ggplot(electricPoll_EuropeW,aes(x=`%Electric`,y=Value,colour=Country)) +
+  geom_point() +
+  facet_wrap(~Pollutant, scales="free") +
+  ggtitle("Pollutant levels against % share of electric vehicles in Europe") +
+  labs(x="% Share of Electric Vehicles") +
+  scale_fill_continuous(guide = guide_legend()) +
+  theme(legend.position="bottom")
+```
+
+Based on the plot of Northern Europe, we can see that there is a lot of variability in the points and the variance does not seem equal for all X. In other words, there is heteroscedasticity in the data. Therefore, the data for Northern Europe is not suitable for linear regression. For the plot of Western Europe, there is less variability in the data, however, there appears to be clustering of the points by country. This could mean that there isn't an actual relationship between the % of electric vehicles and the pollutant level in this data, but rather the countries are just very different from one another. Thus, it's not suitable to create a regression model for Northern or Western Europe either.
+
+Therefore, our analyses should focus only focus on North America and East Asia.
+
+
+### Regression Models to Describe the Data
+
+Since many of the plots appear to have a linear pattern, we can fit linear regression models to depict the relationship between the % share of electric vehicles and pollutant levels for the regions of focus.
+
+```{r, include=F}
+# Create datasets for each of the regions
+electricPoll %>% 
+  select(-Measure) %>% 
+  pivot_wider(names_from = Pollutant,values_from = Value) -> electricPoll_wider
+
+electricPoll_wider %>% filter(`Region`=="North America") -> electricPoll_NA
+electricPoll_NA %>% filter(Country=="Canada") -> electricPoll_NA_CAN
+electricPoll_NA %>% filter(Country=="United States of America") -> electricPoll_NA_US
+
+electricPoll_wider %>% filter(`Region`=="East Asia") -> electricPoll_EA
+electricPoll_EA %>% filter(Country=="China") -> electricPoll_EA_CHN
+electricPoll_EA %>% filter(Country=="Japan") -> electricPoll_EA_JP
+
+electricPoll_wider %>% filter(`Region`=="Northern Europe") -> electricPoll_NE
+electricPoll_wider %>% filter(`Region`=="Western Europe") -> electricPoll_WE
+remove(electricPoll_wider)
+
+# Create an empty dataframe to store a summary of the models
+model_summary <- data.frame(1,2,3,4,5,6,7)
+c_names <- c("Region Code", "Region", "Pollutant" ,"Model Type","R^2","Intercept","%Electric")
+colnames(model_summary) <- c_names
+remove(c_names)
+```
+
+_Regression Models for North America_
+
+First we begin with North America. As seen in Figure 8, Canada and the United States have somewhat similar trends, regression models for North America have been fitted.
+```{r}
+# Regression models for North America by pollutant
+NA_CO_1 <- lm(CO~`%Electric`,electricPoll_NA); glance(NA_CO_1)
+NA_CO2_1 <- lm(CO2~`%Electric`,electricPoll_NA); glance(NA_CO2_1)
+NA_GHG_1 <- lm(GHG~`%Electric`,electricPoll_NA); glance(NA_GHG_1)
+NA_SOX_1 <- lm(SOX~`%Electric`,electricPoll_NA); glance(NA_SOX_1)
+NA_NOX_1 <- lm(NOX~`%Electric`,electricPoll_NA); glance(NA_NOX_1)
+NA_VOC_1 <- lm(VOC~`%Electric`,electricPoll_NA); glance(NA_VOC_1)
+
+# Create a table which summarizes the models ### THIS IS STILL A TEST
+CO <- c("NA", "North America", "CO", "Linear",round(summary(NA_CO_1)$r.squared,3), summary(NA_CO_1)$coefficients[1], 
+        summary(NA_CO_1)$coefficients[2])
+CO2 <- c("NA", "North America", "CO", "Linear",round(summary(NA_CO2_1)$r.squared,3), summary(NA_CO2_1)$coefficients[1], 
+        summary(NA_CO2_1)$coefficients[2])
+GHG <- c("NA", "North America", "CO", "Linear",round(summary(NA_CO2_1)$r.squared,3), summary(NA_GHG_1)$coefficients[1], 
+        summary(NA_GHG_1)$coefficients[2])
+SOX <- c("NA", "North America", "CO", "Linear",summary(NA_SOX_1)$r.squared, summary(NA_SOX_1)$coefficients[1], 
+        summary(NA_SOX_1)$coefficients[2])
+NOX <- c("NA", "North America", "CO", "Linear",summary(NA_NOX_1)$r.squared, summary(NA_NOX_1)$coefficients[1], 
+        summary(NA_NOX_1)$coefficients[2])
+VOC <- c("NA", "North America", "CO", "Linear",summary(NA_VOC_1)$r.squared, summary(NA_VOC_1)$coefficients[1], 
+        summary(NA_VOC_1)$coefficients[2])
+model_summary <- rbind(model_summary, CO,CO2,GHG,SOX,NOX,VOC)
+model_summary %>% filter(Region != 2) -> model_summary
+model_summary
+```
+
+Some of the regression models have relatively high $R^2$ values while others have lower $R^2$ values. The models for SO$_x$, NO$_x$, and VOC have a relatively high $R^2$ value (78.8%, 82.3%, and 78.8% respectively) and very small p-values, indicating that the model explains the variability in the data well and that the % share of electric vehicles have a significant effect on the 3 pollutants. The CO model has an $R^2$ value of 58.9% which means it is decent in explaining the variability in the data. The p-value is also low (although not as low as SO$_x$, NO$_x$, and VOC) which suggests the % of electric vehicles has a significant effect on CO. For CO$_2$ and GHG, the $R^2$ is quite low and the p-values are high. This indicates that a linear model may not be very good to describe the CO$_2$ and GHG data. 
+
+```{r}
+# Regression models for Canada by pollutant
+NA_CAN_CO_1 <- lm(CO~`%Electric`,electricPoll_NA_CAN); glance(NA_CAN_CO_1)
+NA_CAN_CO2_1 <- lm(CO2~`%Electric`,electricPoll_NA_CAN); glance(NA_CAN_CO2_1)
+NA_CAN_GHG_1 <- lm(GHG~`%Electric`,electricPoll_NA_CAN); glance(NA_CAN_GHG_1)
+NA_CAN_SOX_1 <- lm(SOX~`%Electric`,electricPoll_NA_CAN); glance(NA_CAN_SOX_1)
+NA_CAN_NOX_1 <- lm(NOX~`%Electric`,electricPoll_NA_CAN); glance(NA_CAN_NOX_1)
+NA_CAN_VOC_1 <- lm(VOC~`%Electric`,electricPoll_NA_CAN); glance(NA_CAN_VOC_1)
+```
+
+$R^2$ values are greater than 71% for all the models except CO$_2$, which has an $R^2$ of 14%. The $R^2$ values for the GHG, SO$_x$, and VOC models were particularly high with $R^2$ values of 82.6%, 88.6%, and 84.1% respectively.
+
+
+```{r}
+# Regression models for United States by pollutant
+NA_US_CO_1 <- lm(CO~`%Electric`,electricPoll_NA_US); glance(NA_US_CO_1)
+NA_US_CO2_1 <- lm(CO2~`%Electric`,electricPoll_NA_US); glance(NA_US_CO2_1)
+NA_US_GHG_1 <- lm(GHG~`%Electric`,electricPoll_NA_US); glance(NA_US_GHG_1)
+NA_US_SOX_1 <- lm(SOX~`%Electric`,electricPoll_NA_US); glance(NA_US_SOX_1)
+NA_US_NOX_1 <- lm(NOX~`%Electric`,electricPoll_NA_US); glance(NA_US_NOX_1)
+NA_US_VOC_1 <- lm(VOC~`%Electric`,electricPoll_NA_US); glance(NA_US_VOC_1)
+```
+
+$R^2$ values are greater than 73% for all the models except CO$_2$, which has an $R^2$ of 57%. The $R^2$ values for the CO, SO$_x$, NO$_x$, and VOC models were particularly high with $R^2$ values of 97.5%, 88.9%, 95.2% and 96.9% respectively. 
+
+By splitting the region apart into two countries, we are able to attain higher $R^2$ values for a linear model. However, to check if a linear model is appropriate, we plot a the residuals against fitted values for each pollutant.
+
+```{r}
+# Residuals vs. fitted plots for Canada
+ggplot(NA_CAN_CO_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("CO, Canada")
+ggplot(NA_CAN_CO2_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("CO2, Canada")
+ggplot(NA_CAN_GHG_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("GHG, Canada")
+ggplot(NA_CAN_SOX_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("SOX, Canada")
+ggplot(NA_CAN_NOX_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("NOX, Canada")
+ggplot(NA_CAN_VOC_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("VOC, Canada")
+```
+
+The residuals against fitted plots seem to be following a somewhat quadratic trend for CO and NO$_x$. So perhaps a quadratic model might explain the data better than a linear model. For CO$_2$, GHG, and VOC, there seems to be an outlier on the top left corner of each plot. If we remove this outlier and rebuild the model, the $R^2$ might improve. Finally, there doesn't seem to be any particular trend for SO$_x$. However, it does not look random because there may be something going on with the points clustered at the upper right corner of the plot. Since the residuals against fitted plot does not appear random, a linear regression model may not be suitable for it.
+
+```{r}
+# Residuals vs. fitted plots for the United States
+ggplot(NA_US_CO_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("CO, US")
+ggplot(NA_US_CO2_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("CO2, US")
+ggplot(NA_US_GHG_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("GHG, US")
+ggplot(NA_US_SOX_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("SOX, US")
+ggplot(NA_US_NOX_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("NOX, US")
+ggplot(NA_US_VOC_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("VOC, US")
+```
+
+Likewise, we also plot a residuals against fitted plot for the United States since we do not want to assume that a linear model is appropriate for the data. Unlike Canada, the residuals against fitted plots for the United States are quite random for most of the pollutants. However, we could argue that CO$_2$ has an outlier and so removing it may help us develop a better model. Thus, linear models are appropriate for all pollutants except CO$_2$ in the United States.
+
+We now build quadratic models for CO and NO$_x$ in Canada. The $R^2$ values have increased by over 20% with a quadratic model for both pollutants resulting in values of 96.2% and 97.8% $R^2$ values for for CO and NO$_x$ respectively.
+```{r}
+# Quadratic models for CO and NOX in Canada
+NA_CAN_CO_2 <- lm(CO~`%Electric`+I(`%Electric`^2),electricPoll_NA_CAN); glance(NA_CAN_CO_2)
+NA_CAN_NOX_2 <- lm(NOX~`%Electric`+I(`%Electric`^2),electricPoll_NA_CAN); glance(NA_CAN_NOX_2)
+```
+
+The $R^2$ values have increased substantially for each of the pollutants. For example, the $R^2$ value for CO has increased from 71.5% to 92.8% for Canada.
+
+Now we plot residuals against fitted values to assess whether the residuals vs. fitted points seem more accurate.
+```{r}
+ggplot(NA_CAN_CO_2,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Quadratic - CO, Canada")
+ggplot(NA_CAN_NOX_2,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Quadratic - NOX, Canada")
+```
+
+The residuals against fitted values now seem random enough for NO$_x$. However, there is still a left over parabola or perhaps a W-shaped trend for CO. I wouldn't be certain about the W-shape trend because it is only 1 point which is making it seem like a W. But let's test it out anyways.
+
+```{r,}
+# W-shape model (i.e. degree 4 polynomial)
+NA_CAN_CO_4 <- lm(CO~`%Electric`+I(`%Electric`^2)+I(`%Electric`^3)+I(`%Electric`^4),electricPoll_NA_CAN)
+ggplot(NA_CAN_CO_4,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("W-Shaped - CO, Canada")
+summary(NA_CAN_CO_4)
+```
+
+The $R^2$ values for the W-shaped model is 99.7%. We notice that many of the terms in the quadratic model are insignificant (p-value > 0.05). So we can try removing the term with the greatest value, refit, and see if it the residual against fitted plot improves.
+
+```{r}
+# Degree 3 polynomial model
+NA_CAN_CO_4 <- lm(CO~`%Electric`+I(`%Electric`^2)+I(`%Electric`^3),electricPoll_NA_CAN)
+ggplot(NA_CAN_CO_4,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Degree-3 - CO, Canada")
+summary(NA_CAN_CO_4)
+```
+
+The $R^2$ value for the 3-degree polynomial model is approximately the same as the W-shaped model (99.7%). All the terms are now significant as well. However, the residuals against fitted plot for this model still has a somewhat parabola shape, with a possible outlier at the top. So perhaps a better model, would be something that looks similar to a parabola like a rational model.
+
+```{r}
+# Rational model
+NA_CAN_CO_5 <- lm(CO~`%Electric`+I(`%Electric`^(-1)),electricPoll_NA_CAN)
+ggplot(NA_CAN_CO_5,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Rational - CO, Canada")
+summary(NA_CAN_CO_5)
+```
+
+The $R^2$ value is now 92.8% which is lower than the quadratic, W-shaped, and 3-degree polynomial models. However, the resdiuals against fitted values plot is much more random here. Thus, we conclude that the rational model is the best model out of the 4 to explain CO trends in Canada.
+
+Now we have CO$_2$, GHG, and VOC in Canada and CO2 in the US to deal with. All of these plots had an outlier in the upper left corner of the residuals against fitted values plot. Based on the visualizations of the data, there aren't any obvious outliers. Thus, we end it here and conclude that there is just not enough data to form a meaningful model.
+
+Overall, the models we are left with include:
+
+- Linear models for CO, GHG, NO$_x$, SO$_x$, and VOC in the US
+- Quadratic model for NO$_x$ in Canada
+- Rational model for CO in Canada
+
+Therefore, we can extrapolate for these 7 models.
+
+_Regression Models for East Asia_
+
+Based on the data visualization, there was only sufficient data for CO$_2$ in China. There was enough data for all pollutants for Japan. Therefore, we will build models based on this.
+
+```{r}
+# Regression model for China (CO2)
+EA_CHN_CO2_1 <- lm(CO2~`%Electric`,electricPoll_EA_CHN); glance(EA_CHN_CO2_1)
+ggplot(EA_CHN_CO2_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Linear - CO2, China")
+```
+
+The $R^2$ value is 6.3% which is very low. Thus, the model does not explain for a lot of the variability in the data. In addition, the residuals against fitted values plot appears to have a fanning effect. In other words, there is heteroscedasticity. Thus, we cannot build a model for CO$_2$ in China.
+
+
+```{r}
+# Regression models for Japan by pollutant
+EA_JP_CO_1 <- lm(CO~`%Electric`,electricPoll_EA_JP); glance(EA_JP_CO_1)
+EA_JP_CO2_1 <- lm(CO2~`%Electric`,electricPoll_EA_JP); glance(EA_JP_CO2_1)
+EA_JP_GHG_1 <- lm(GHG~`%Electric`,electricPoll_EA_JP); glance(EA_JP_GHG_1)
+EA_JP_SOX_1 <- lm(SOX~`%Electric`,electricPoll_EA_JP); glance(EA_JP_SOX_1)
+EA_JP_NOX_1 <- lm(NOX~`%Electric`,electricPoll_EA_JP); glance(EA_JP_NOX_1)
+EA_JP_VOC_1 <- lm(VOC~`%Electric`,electricPoll_EA_JP); glance(EA_JP_VOC_1)
+```
+
+For Japan, CO, CO$_2$, and GHG have very low $R^2$ values. SO$_x$, NO$_x$, and VOC have more decent $R^2$ values (62.9%, 62.9%, 70.2% respectively). We check the residuals against fitted values to see if a linear model is appropriate.
+
+```{r}
+ggplot(EA_JP_CO_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Linear - CO, JP")
+ggplot(EA_JP_CO2_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Linear - CO2, JP")
+ggplot(EA_JP_GHG_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Linear - GHG, JP")
+ggplot(EA_JP_SOX_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Linear - SOX, JP")
+ggplot(EA_JP_NOX_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Linear - NOX, JP")
+ggplot(EA_JP_VOC_1,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Linear - VOC, JP")
+```
+
+Based on the plots:
+
+- There appears to be an outlier at the top right corner for CO. We will need to investigate this outlier further to see if we can improve our model.
+- The points seem quite random for CO$_2$ and GHG. Thus, a linear model might be appropriate for it. But since the $R^2$ values are poor, we conclude that we cannot rely on a model to describe these trends.
+- The points for SO$_x$, NO$_x$, and VOC do not seem to follow any particular trend. Although, they don't seem to be purely random either. For SO$_x$ and VOC, this could just mean that variance of the residuals are not the same (heterogeneity). For these pollutants, especially NO$_x$, there could be an outlier on the top left corner.
+
+Based on the data visualization, the outlier is located on the top left corner for the CO plot (above a CO level of 24). So we will remove this and remodel again.
+
+```{r}
+# Dataset with removed outlier for CO
+electricPoll_EA_JP %>% filter(CO <= 24) -> electricPoll_EA_JP_noOutlier
+
+# Scatterplot of data after removing the outlier
+ggplot(electricPoll_EA_JP_noOutlier,aes(x=`%Electric`,y=CO)) +
+  geom_point() +
+  geom_smooth(method="lm",se=F) +
+  labs(x="% Share of Electric Vehicles")
+
+# Remodelled after outlier was removed. Also a residuals against fitted plot.
+EA_JP_CO_2 <- lm(CO~`%Electric`,electricPoll_EA_JP_noOutlier); glance(EA_JP_CO_2)
+ggplot(EA_JP_CO_2,aes(y=.resid, x=.fitted))+geom_point()+ggtitle("Linear2 - CO, JP")
+```
+
+The residuals against fitted values plot looks a lot more random now, however the $R^2$ value has gotten worse (2.4% now compared to 16% before). Therefore, we conclude that there isn't enough data to build a model for CO in Japan as of yet.
+
+Overall, we have 3 (shaky) models for SO$_x$, NO$_x$, and VOC but we'll be making shaky extrapolations with them.
+
+
+## Regression Models to Extrapolate 
+
+
+
+
+
+
+## Impact of Electric Vehicles on Health
+NOTE: THIS ANALYSIS IS OUT OF DATE BC THE HEALTH DATA WAS CHANGED TO PER 100 000 POPULATION. DONT BE SURPRISED IF IT BREAKS WHEN YOU RUN IT
+REMINDER: We cannot do much with the health component because we only have 1 year of data.
+### Data Visualization
+TODO: Need a write up for this section
+```{r, include=F}
+# Dataframe to analyze association between % share of electric vehicles and pollution. 
+ALLdata %>%
+  select(Country:Total_YLLs) %>%
+  unique() %>% 
+  filter(!is.na(Sex)) %>% 
+  pivot_longer("Ischaemic heart disease_DALYs":Total_YLLs, names_to="Disease_Measure", values_to="Value") %>% 
+  separate(Disease_Measure,into=c("Disease","Measure"),sep="_") ->
+  electricHlth
+```
+
+```{r,fig.cap="\\label{fig:figs}Pollutants against % share of electric vehicles"}
+electricHlth %>% filter(Disease=="Total") -> electricHlth_Total
+
+# Scatter plots of % share of electric vehicles against value of pollutant
+ggplot(electricHlth_Total,aes(x=`%Electric`,y=Value, colour=Region)) +
+  geom_point() +
+  facet_wrap(~Measure, scales="free") +
+  labs(x="% Share of Electric Vehicles")
+```
+
+From the WHO,
+DALY: Disability-adjusted life year
+YLL: Years of life lost
+YLD: Years lost to disability
+
+DALY = YLL + YLD
+YLL = N x L
+  where N=number of deaths, L=standard life expectancy at age of death in years
+YLD = I x DW x L
+  where I=number of incident cases, DW=disability weight, L=average years of the case until remission or death
+
+Could this be due to population differences.
+
+```{r,fig.height=2,fig.cap="\\label{fig:figs}Pollutants against % share of electric vehicles"}
+electricHlth %>% filter(Disease=="Total") %>% filter(Region=="East Asia") -> electricHlth_EA
+
+# Scatter plots of % share of electric vehicles against value of pollutant
+ggplot(electricHlth_EA,aes(x=`%Electric`,y=Value, colour=Country,shape=Sex)) +
+  geom_point() +
+  facet_wrap(~Measure, scales="free") +
+  labs(x="% Share of Electric Vehicles")
+```
+
+```{r,fig.height=2,fig.cap="\\label{fig:figs}Pollutants against % share of electric vehicles"}
+electricHlth %>% filter(Disease=="Total") %>% filter(Region=="North America") -> electricHlth_NA
+
+# Scatter plots of % share of electric vehicles against value of pollutant
+ggplot(electricHlth_NA,aes(x=`%Electric`,y=Value,colour=Country)) +
+  geom_point() +
+  facet_wrap(~Measure, scales="free") +
+  labs(x="% Share of Electric Vehicles")
+```
+
+```{r,fig.height=2,fig.cap="\\label{fig:figs}Pollutants against % share of electric vehicles"}
+electricHlth %>% filter(Disease=="Total") %>% filter(Region=="Northern Europe") -> electricHlth_NE
+
+# Scatter plots of % share of electric vehicles against value of pollutant
+ggplot(electricHlth_NE,aes(x=`%Electric`,y=Value,colour=Country)) +
+  geom_point() +
+  facet_wrap(~Measure, scales="free") +
+  labs(x="% Share of Electric Vehicles")
+```
+
+```{r,fig.height=2,fig.cap="\\label{fig:figs}Pollutants against % share of electric vehicles"}
+electricHlth %>% filter(Disease=="Total") %>% filter(Region=="Western Europe") -> electricHlth_WE
+
+# Scatter plots of % share of electric vehicles against value of pollutant
+ggplot(electricHlth_WE,aes(x=`%Electric`,y=Value,colour=Country)) +
+  geom_point() +
+  facet_wrap(~Measure, scales="free") +
+  labs(x="% Share of Electric Vehicles")
+```
+
+Basically, we can't form any conclusions from this bc we only have 2 years of data and so we've run out of degrees of freedom for this.
+
+# Discussion
+- What have you learned from the analysis? Translate stats to results. 
+- Relate to what other professionals in the field have said about this topic (if you didn't get far, maybe you can mention this in the future direction section)
+
+# Sources of Error, Limitations, & Future Direction
+TODO: Talk about these
+Sources of Error:
+- Differences in measurements, precisely sales vs registration of cars between countries
+Limitations:
+- Lack of a consistent data source, missing data, and lack of funding to purchase data
+- Short time period
+Future Direction/ What I would have done if I had money + time or if I could redo this again:
+- Investigate hybrid
+- Focus on a single country (ex. Canada) to simplify things. In this way, I could gain more data on health impacts as well, since worldwide data is difficult to obtain and requires the cooperation of international organizations.
+
+# Conclusion
+
+\newpage
+# References
+
+\newpage
+# Appendices
+
+## Appendix A: Regression Models
+### A-1 Regression Models for North America
+#### Linear Models for North America
+#### Linear Models for Canada
+#### Linear Models for United States
+### A-2 Regression Models for East Asia
+### A-3 Regression Models for Northern and Western Europe
+
+
+
+
